@@ -1,0 +1,5 @@
+Flask==2.0.3
+Flask_Bcrypt==1.0.0
+Flask_PyMongo==2.3.0
+python_bcrypt==0.3.2
+flask-jwt-extended==4.3.1

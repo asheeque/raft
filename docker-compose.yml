@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  server-1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: backend
+    container_name: server-1
+    environment:
+      - IS_LEADER=${IS_LEADER:-true}
+      - SERVER_NAME=MASTER
+      - PORT=5001
+      - DBNAME=mongoOne
+    depends_on:
+      - mongoOne
+    networks:
+      - app-network
+  
+  mongoOne:
+    image: mongo
+    volumes:
+      - data-volume1:/data/db
+    ports:
+      - "27017:27017"
+    container_name: mongoOne
+    networks:
+      - app-network
+  
+  server-2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: backend
+    container_name: server-2
+    environment:
+      - IS_LEADER=${IS_LEADER:-false}
+      - SERVER_NAME=slaveOne
+      - PORT=5002
+      - DBNAME=mongoTwo
+    depends_on:
+      - mongoTwo
+    networks:
+      - app-network
+  
+  mongoTwo:
+    image: mongo
+    volumes:
+      - data-volume2:/data/db
+    ports:
+      - "27018:27017"
+    container_name: mongoTwo
+    networks:
+      - app-network
+
+networks:
+    app-network:
+        driver: bridge
+volumes:
+  data-volume1:
+  data-volume2:

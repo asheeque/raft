@@ -1,61 +1,119 @@
 version: '3.8'
 
 services:
-  server-1:
+  node1:
     build:
-      context: .
+      context: ./Node/.
       dockerfile: Dockerfile
-    image: backend
-    container_name: server-1
+    container_name: Node1
+    
+    ports:
+      - "5001:5000"
     environment:
       - IS_LEADER=${IS_LEADER:-true}
       - SERVER_NAME=MASTER
       - PORT=5001
+      - UDP_PORT=5555
+      - IP=127.0.0.2
       - DBNAME=mongoOne
-    depends_on:
-      - mongoOne
-    networks:
-      - app-network
-  
-  mongoOne:
-    image: mongo
+      - name=Node1
+    # depends_on:
+    #   - mongoOne
     volumes:
-      - data-volume1:/data/db
-    ports:
-      - "27017:27017"
-    container_name: mongoOne
-    networks:
-      - app-network
-  
-  server-2:
+      - data-volume1:/app
+  node2:
     build:
-      context: .
+      context: ./Node/.
       dockerfile: Dockerfile
-    image: backend
-    container_name: server-2
+    container_name: Node2
+    
+    ports:
+    - "5002:5000"
     environment:
       - IS_LEADER=${IS_LEADER:-false}
       - SERVER_NAME=slaveOne
       - PORT=5002
+      - UDP_PORT=5555
+      - IP=127.0.0.3
       - DBNAME=mongoTwo
-    depends_on:
-      - mongoTwo
-    networks:
-      - app-network
-  
-  mongoTwo:
-    image: mongo
+      - name=Node2
+    # depends_on:
+    #   - mongoOne
     volumes:
-      - data-volume2:/data/db
+      - data-volume2:/app
+  node3:
+    build:
+      context: ./Node/.
+      dockerfile: Dockerfile
+    container_name: Node3
+    
     ports:
-      - "27018:27017"
-    container_name: mongoTwo
-    networks:
-      - app-network
+    - "5003:5000"
+    environment:
+      - IS_LEADER=${IS_LEADER:-false}
+      - SERVER_NAME=slaveTwo
+      - PORT=5003
+      - UDP_PORT=5555
+      - IP=127.0.0.4
+      - DBNAME=mongoThree
+      - name=Node3
+    # depends_on:
+    #   - mongoOne
 
-networks:
-    app-network:
-        driver: bridge
+    volumes:
+      - data-volume3:/app
+  node4:
+    build:
+      context: ./Node/.
+      dockerfile: Dockerfile
+    container_name: Node4
+    ports:
+    - "5004:5000"
+    environment:
+      - IS_LEADER=${IS_LEADER:-false}
+      - SERVER_NAME=slaveThree
+      - PORT=5004
+      - UDP_PORT=5555
+      - IP=127.0.0.5
+      - DBNAME=mongoFour
+      - name=Node4
+    # depends_on:
+    #   - mongoOne
+    
+    volumes:
+      - data-volume4:/app
+  node5:
+    build:
+      context: ./Node/.
+      dockerfile: Dockerfile
+    container_name: Node5
+    ports:
+    - "5005:5000"
+    
+    environment:
+      - IS_LEADER=${IS_LEADER:-false}
+      - SERVER_NAME=slaveFour
+      - PORT=5005
+      - UDP_PORT=5555
+      - IP=127.0.0.6
+      - DBNAME=mongoFive
+      - name=Node5
+    # depends_on:
+    #   - mongoOne
+
+    volumes:
+      - data-volume5:/app
+
+  controller:
+      container_name: Controller
+      build: Controller/.
+      stdin_open: true
+
+
+
 volumes:
-  data-volume1:
-  data-volume2:
+    data-volume1:
+    data-volume2:
+    data-volume3:
+    data-volume4:
+    data-volume5:

@@ -7,7 +7,9 @@ import threading
 import json
 import traceback
 import sys
+####
 
+from flaskapp import FlaskApp
 
 class Node():
 
@@ -41,7 +43,10 @@ class Node():
         "key": None,
         "value": None
         }
-        
+        self.nextIndex = {}
+        self.db=[]
+        self.logIndex=0
+
     def init_timeout(self):
         self.getRandomElectionTime()
         # safety guarantee, timeout thread may expire after election
@@ -85,34 +90,40 @@ class Node():
     def increaseVote(self):
         self.voteCount+=1
         if self.voteCount >= self.leaderEligible:
+
             self.status="LEADER"
             self.leaderName=self.currentNode
+            for servers in self.serverList:
+
+                self.nextIndex[servers] =  len(self.db)+1 
+            print(self.nextIndex)
             print("Leader Selected",self.leaderName,flush=True)
-            self.startHeartbeat()
-
-    
-        
-    
-    def startHeartbeat(self):
-
-        while self.status == 'LEADER' and self.state=='ACTIVE':
-
-            start_time = time.time()
-            for i in self.serverList:
-                if i!=self.currentNode:
-                    mess={
+            empty_hb ={
                         "term": self.currentTerm,
                         "leaderId":self.currentNode,
                         "entries":[],
                         "prevLogIndex":0,
                         "prevLogTerm":0,
                     }
+            self.startHeartbeat(empty_hb)
+
+    
+        
+    
+    def startHeartbeat(self,value):
+
+        while self.status == 'LEADER' and self.state=='ACTIVE':
+
+            start_time = time.time()
+            for i in self.serverList:
+                if i!=self.currentNode:
+                    
                     message={
                         "sender_name": self.currentNode,
                         "request": "APPEND_RPC",
                         "term": self.currentTerm,
                         "key": 'key',
-                        "value": mess
+                        "value": value
                         }
                     threading.Thread(target=self.sender, args=[i,message]).start()
             delta = time.time() - start_time
@@ -151,7 +162,7 @@ class Node():
     def startListener(self):        
         threading.Thread(target=self.listener).start()
 
-
+    
     def listener(self):
         print(f"Starting Listener ",file=sys.stderr)
         while True:
@@ -168,15 +179,15 @@ class Node():
         # if decoded_msg['sender_name'] == 'Controller':
             
         # self.termDetails['votedFor']=decoded_msg['sender_name']
-        self.termDetails['term']=decoded_msg['term']
-        self.termDetails['log']=[],
-        self.termDetails['heartbeatInterval']=100
-        self.termDetails['timeoutInterval']=self.timeout
-        # print(msg)
-        # print(self.termDetails)
-        json_string = json.dumps(self.termDetails)
-        with open('json_data.json', 'w') as outfile:
-            json.dump(json_string, outfile)
+        # self.termDetails['term']=decoded_msg['term']
+        # self.termDetails['log']=[],
+        # self.termDetails['heartbeatInterval']=100
+        # self.termDetails['timeoutInterval']=self.timeout
+        # # print(msg)
+        # # print(self.termDetails)
+        # json_string = json.dumps(self.termDetails)
+        # with open('json_data.json', 'w') as outfile:
+        #     json.dump(json_string, outfile)
 
 
         if decoded_msg['request'] == 'VOTE_REQUEST' and self.state=='ACTIVE':
@@ -201,7 +212,43 @@ class Node():
             self.increaseVote()
         elif decoded_msg['request']=='UPDATELEADERELIGIBLE':
             self.leaderEligible=decoded_msg['value']
+        elif decoded_msg['request']=='PUT':
+            self.handlePut(decoded_msg)
+        elif decoded_msg['request']=='STORE':
+            self.controller_store(decoded_msg)
     
+    def controller_store(self,data):
+        # print(data)
+
+        if self.status == "LEADER":
+
+            # if self.currentTerm not in self.db:
+            #     self.db[self.currentTerm] = []
+
+
+            single_log = {
+                "term":self.currentTerm,
+                "key" : data['key'],
+                "value" : data['value']
+            }
+            self.db.append(single_log)
+            print(self.db)
+            self.broadcastLogs(single_log)
+        else :
+            store_reply = {
+                "sender_name": self.currentNode,
+                "request": "LEADER_INFO",
+                "term": self.currentTerm,
+                "key": 'LEADER',
+                "value": self.leaderName
+            }
+
+            reply = json.dumps(store_reply).encode('utf-8')
+            threading.Thread(target=self.sendAck,args=[data['sender_name'],reply]).start()
+
+
+
+
 
     def updateNodeActiveList(self,decoded_msg):
         node = decoded_msg['sender_name']
@@ -315,14 +362,77 @@ class Node():
             threading.Thread(target=self.sendAck,args=[decoded_msg['sender_name'],reply]).start()
 
 
+
     def sendAck(self,server_name,ack):
         self.sock.sendto(ack,(server_name,self.udpPort))
 
-if __name__ == "__main__":
-    n = Node()
+    def handlePut(self,content):
+        
+        # print(content)
+        self.checkLogging(content)
+    
+    def checkLogging(self,content):
+        if(self.status=="LEADER"):
+            
+            temp={}
+        
+            temp["Status"]=self.status
+            temp["LogIndex"]=self.logIndex-1
+            temp["CurrentNode"]=self.currentNode
+            temp["PUT"]=content
+            if self.currentTerm not in self.db:
 
-    n.getRandomElectionTime()  
-    n.init_timeout()
-    n.sock = n.init_socket()
-    n.startListener()
+                self.db[self.currentTerm] = []
+            self.db[self.currentTerm].append(temp)
+        # self.db[self.currentTerm].append(temp)
+        # print(self.db)
+        # confirmat
 
+    def broadcastLogs(self,log):
+
+        
+        start_time = time.time()
+        for i in self.serverList:
+            if i!=self.currentNode:
+
+                nextIndex = self.nextIndex[i]
+                prevLogIndex = nextIndex - 1
+
+                prevLogTerm = -1
+                if prevLogIndex >=0:
+                    prevLogTerm = self.db[prevLogIndex] - 1
+
+                appendRPCMsg = {
+                        "term": self.currentTerm,
+                        "leaderId":self.currentNode,
+                        "entries":log,
+                        "prevLogIndex":0,
+                        "prevLogTerm":0,
+                    }
+                message={
+                    "sender_name": self.currentNode,
+                    "request": "APPEND_RPC",
+                    "term": self.currentTerm,
+                    "key": 'key',
+                    "value": appendRPCMsg
+                    }
+                threading.Thread(target=self.sender, args=[i,message]).start()
+        delta = time.time() - start_time
+        time.sleep((self.heartBeatInterval - delta) / 1000)
+        
+
+      
+# if __name__ == "__main__":
+#     n = Node()
+
+#     n.getRandomElectionTime()  
+#     n.init_timeout()
+#     print("76",file=sys.stderr)
+#     n.sock = n.init_socket()
+#     n.startListener()
+#     PORT = os.getenv('PORT')
+#     print(PORT,file=sys.stderr)
+#     print("76",file=sys.stderr)
+#     ip = os.getenv('IP')
+#     f = FlaskApp(PORT)
+    
